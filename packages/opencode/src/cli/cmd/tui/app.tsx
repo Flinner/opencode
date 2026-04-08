@@ -41,6 +41,7 @@ import { KeybindProvider, useKeybind } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
 import { Session } from "@tui/routes/session"
+import { TabBar } from "./component/tab-bar"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -269,6 +270,59 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   const promptRef = usePromptRef()
   const routes: RouteMap = new Map()
   const [routeRev, setRouteRev] = createSignal(0)
+  const [openTabs, setOpenTabs] = createSignal<string[]>([])
+  const [activeTabIndex, setActiveTabIndex] = createSignal(-1)
+
+  const openTab = (sessionID: string) => {
+    const tabs = openTabs()
+    const idx = tabs.indexOf(sessionID)
+    if (idx >= 0) {
+      setActiveTabIndex(idx)
+    } else {
+      setOpenTabs([...tabs, sessionID])
+      setActiveTabIndex(tabs.length)
+    }
+  }
+
+  const closeTab = (sessionID: string) => {
+    const tabs = openTabs()
+    const idx = tabs.indexOf(sessionID)
+    if (idx < 0) return
+    const newTabs = tabs.filter((_, i) => i !== idx)
+    setOpenTabs(newTabs)
+    if (route.data.type === "session" && route.data.sessionID === sessionID) {
+      if (newTabs.length === 0) {
+        route.navigate({ type: "home" })
+        setActiveTabIndex(-1)
+      } else {
+        const nextIdx = Math.min(idx, newTabs.length - 1)
+        setActiveTabIndex(nextIdx)
+        route.navigate({ type: "session", sessionID: newTabs[nextIdx] })
+      }
+    }
+  }
+
+  const selectTab = (sessionID: string) => {
+    const idx = openTabs().indexOf(sessionID)
+    if (idx >= 0) {
+      setActiveTabIndex(idx)
+      route.navigate({ type: "session", sessionID })
+    }
+  }
+
+  const selectNextTab = () => {
+    const tabs = openTabs()
+    if (tabs.length < 2) return
+    const next = (activeTabIndex() + 1) % tabs.length
+    selectTab(tabs[next])
+  }
+
+  const selectPrevTab = () => {
+    const tabs = openTabs()
+    if (tabs.length < 2) return
+    const prev = (activeTabIndex() - 1 + tabs.length) % tabs.length
+    selectTab(tabs[prev])
+  }
   const routeView = (name: string) => {
     routeRev()
     return routes.get(name)?.at(-1)?.render
@@ -323,6 +377,25 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       evt.preventDefault()
       evt.stopPropagation()
       return
+    }
+
+    if (evt.ctrl) {
+      if (evt.name === "tab") {
+        if (evt.shift) {
+          selectPrevTab()
+        } else {
+          selectNextTab()
+        }
+        evt.preventDefault()
+        evt.stopPropagation()
+        return
+      }
+      if (evt.name === "w" && route.data.type === "session") {
+        closeTab(route.data.sessionID)
+        evt.preventDefault()
+        evt.stopPropagation()
+        return
+      }
     }
 
     const focus = renderer.currentFocusedRenderable
@@ -387,6 +460,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       }
       // Handle --session without --fork immediately (fork is handled in createEffect below)
       if (args.sessionID && !args.fork) {
+        openTab(args.sessionID)
         route.navigate({
           type: "session",
           sessionID: args.sessionID,
@@ -407,12 +481,14 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       if (args.fork) {
         sdk.client.session.fork({ sessionID: match }).then((result) => {
           if (result.data?.id) {
+            openTab(result.data.id)
             route.navigate({ type: "session", sessionID: result.data.id })
           } else {
             toast.show({ message: "Failed to fork session", variant: "error" })
           }
         })
       } else {
+        openTab(match)
         route.navigate({ type: "session", sessionID: match })
       }
     }
@@ -427,6 +503,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     forked = true
     sdk.client.session.fork({ sessionID: args.sessionID }).then((result) => {
       if (result.data?.id) {
+        openTab(result.data.id)
         route.navigate({ type: "session", sessionID: result.data.id })
       } else {
         toast.show({ message: "Failed to fork session", variant: "error" })
@@ -820,6 +897,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   })
 
   sdk.event.on(TuiEvent.SessionSelect.type, (evt) => {
+    openTab(evt.properties.sessionID)
     route.navigate({
       type: "session",
       sessionID: evt.properties.sessionID,
@@ -827,13 +905,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
   })
 
   sdk.event.on("session.deleted", (evt) => {
-    if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
-      route.navigate({ type: "home" })
-      toast.show({
-        variant: "info",
-        message: "The current session was deleted",
-      })
-    }
+    closeTab(evt.properties.info.id)
   })
 
   sdk.event.on("session.error", (evt) => {
@@ -927,6 +999,9 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
             <Home />
           </Match>
           <Match when={route.data.type === "session"}>
+            <Show when={openTabs().length >= 1}>
+              <TabBar tabs={openTabs()} activeIndex={activeTabIndex()} onSelect={selectTab} onClose={closeTab} />
+            </Show>
             <Session />
           </Match>
         </Switch>
