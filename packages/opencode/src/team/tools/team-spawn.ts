@@ -6,13 +6,19 @@ import { SessionPrompt } from "@/session/prompt"
 import { Agent } from "@/agent/agent"
 import { MessageID } from "@/session/schema"
 import { Team } from "../service"
+import { Skill } from "@/skill"
 import { randomUUID } from "crypto"
 
 const parameters = z.object({
   team_name: z.string().describe("The team name"),
   count: z.number().int().positive().default(1).describe("Number of workers to spawn"),
   role: z.string().default("executor").describe("Worker role (e.g., 'executor', 'test-engineer')"),
-  model: z.string().optional().describe("Optional: force all workers to use a specific model (e.g., 'claude-sonnet-4-20250514'). Otherwise uses leader's model."),
+  model: z
+    .string()
+    .optional()
+    .describe(
+      "Optional: force all workers to use a specific model (e.g., 'claude-sonnet-4-20250514'). Otherwise uses leader's model.",
+    ),
   prompt: z.string().optional().describe("Optional: custom system prompt override for workers"),
 })
 
@@ -25,7 +31,8 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
   "team_spawn",
   Effect.gen(function* () {
     return {
-      description: "Spawn N worker sessions for a team. Each worker registers with the team and enters a skill loop to poll for tasks.",
+      description:
+        "Spawn N worker sessions for a team. Each worker registers with the team and enters a skill loop to poll for tasks.",
       parameters,
       async execute(params: z.infer<typeof parameters>, ctx: Tool.Context<MyMetadata>) {
         const teamState = await Team.getState(params.team_name)
@@ -36,6 +43,9 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             output: `Team ${params.team_name} not found`,
           }
         }
+
+        const workerSkill = await Skill.get("worker")
+        const skillContent = workerSkill?.content ?? ""
 
         const workerPrompts = await Promise.all(
           Array.from({ length: params.count }, async (_, i) => {
@@ -58,9 +68,7 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             })
 
             const agent = await Agent.get(workerRole)
-            const model = params.model
-              ? { modelID: params.model as any, providerID: "opencode" as any }
-              : undefined
+            const model = params.model ? { modelID: params.model as any, providerID: "opencode" as any } : undefined
 
             const messageID = MessageID.ascending()
 
@@ -68,15 +76,18 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             const instructions = Team.getPhaseInstructions(phase as any)
             const agents = Team.getPhaseAgents(phase as any)
 
-            const systemPrompt = params.prompt ?? [
-              `You are ${workerName}, a ${workerRole} worker on team ${params.team_name}.`,
-              `Your team is in phase: ${phase}`,
-              `Phase instructions: ${instructions}`,
-              `Available phase agents: ${agents.join(", ")}`,
-              "",
-              "You are in a skill loop. Wait for tasks via team_mailbox_list, claim them with team_task_claim,",
-              "do the work, then transition with team_task_transition. Loop until told to stop.",
-            ].join("\n")
+            const basePrompt =
+              params.prompt ??
+              [
+                `You are ${workerName}, a ${workerRole} worker on team ${params.team_name}.`,
+                `Your team is in phase: ${phase}`,
+                `Phase instructions: ${instructions}`,
+                `Available phase agents: ${agents.join(", ")}`,
+              ].join("\n")
+
+            const systemPrompt = skillContent
+              ? `${basePrompt}\n\n<skill_content name="worker">\n${skillContent}\n</skill_content>`
+              : basePrompt
 
             SessionPrompt.prompt({
               messageID,
@@ -115,8 +126,12 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             `Spawned ${workerPrompts.length} workers for team ${params.team_name}`,
             ...workerPrompts.map((w) => `  ${w.workerName}: session ${w.sessionId} (${w.role})`),
             "",
-            "Workers are now in a skill loop. Use team_phase to advance the team through phases.",
-          ].join("\n"),
+            "Workers loaded $worker skill and are polling for tasks.",
+            skillContent ? "" : "Warning: $worker skill not found in registry.",
+            "Use team_phase to advance the team through phases.",
+          ]
+            .filter(Boolean)
+            .join("\n"),
         }
       },
     } satisfies Tool.DefWithoutID<typeof parameters, MyMetadata>

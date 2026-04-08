@@ -22,8 +22,7 @@ export const TeamCommand = cmd({
 export const TeamListCommand = cmd({
   command: "list",
   describe: "list active teams",
-  builder: (yargs: Argv) =>
-    yargs.option("format", { type: "string", choices: ["table", "json"], default: "table" }),
+  builder: (yargs: Argv) => yargs.option("format", { type: "string", choices: ["table", "json"], default: "table" }),
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
       const teams = await Team.listTeams()
@@ -72,8 +71,7 @@ export const TeamListCommand = cmd({
 export const TeamStatusCommand = cmd({
   command: "status <teamName>",
   describe: "show detailed status of a team",
-  builder: (yargs: Argv) =>
-    yargs.positional("teamName", { describe: "team name", type: "string", demandOption: true }),
+  builder: (yargs: Argv) => yargs.positional("teamName", { describe: "team name", type: "string", demandOption: true }),
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
       const state = await Team.getState(args.teamName)
@@ -82,10 +80,7 @@ export const TeamStatusCommand = cmd({
         process.exit(1)
       }
 
-      const [tasks, workers] = await Promise.all([
-        Team.getTasks(args.teamName),
-        Team.getWorkers(args.teamName),
-      ])
+      const [tasks, workers] = await Promise.all([Team.getTasks(args.teamName), Team.getWorkers(args.teamName)])
 
       UI.println(UI.Style.TEXT_SUCCESS_BOLD + `=== Team: ${args.teamName} ===` + UI.Style.TEXT_NORMAL)
       UI.println(`Phase:     ${state.phase}`)
@@ -127,8 +122,7 @@ export const TeamStatusCommand = cmd({
 export const TeamShutdownCommand = cmd({
   command: "shutdown <teamName>",
   describe: "shutdown a team and stop all workers",
-  builder: (yargs: Argv) =>
-    yargs.positional("teamName", { describe: "team name", type: "string", demandOption: true }),
+  builder: (yargs: Argv) => yargs.positional("teamName", { describe: "team name", type: "string", demandOption: true }),
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
       const state = await Team.getState(args.teamName)
@@ -150,25 +144,35 @@ export const TeamShutdownCommand = cmd({
 
       await Team.advancePhase(args.teamName, "cancelled", "Leader shutdown command")
 
-      UI.println(
-        UI.Style.TEXT_SUCCESS + `Team ${args.teamName} shutdown.` + UI.Style.TEXT_NORMAL,
-      )
+      UI.println(UI.Style.TEXT_SUCCESS + `Team ${args.teamName} shutdown.` + UI.Style.TEXT_NORMAL)
     })
   },
 })
 
 export const TeamStartCommand = cmd({
-  command: "start <count> <task>",
-  describe: "start a new team with N workers on a task",
+  command: "start <workers> <task>",
+  describe: "start a new team with workers on a task",
   builder: (yargs: Argv) =>
     yargs
-      .positional("count", { describe: "number of workers", type: "number", demandOption: true })
+      .positional("workers", {
+        describe: "Worker spec: N or N:role (e.g. '3' or '3:executor' or '2:executor,3:reviewer')",
+        type: "string",
+        demandOption: true,
+      })
       .positional("task", { describe: "task description", type: "string", demandOption: true })
-      .option("role", { type: "string", default: "executor", describe: "worker role" })
       .option("session", { type: "string", describe: "leader session ID (defaults to current)" }),
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
-      let leaderSessionID: any = args.session
+      const specs = parseWorkerSpecs(args.workers as string)
+      if (specs.length === 0) {
+        UI.error("Invalid worker spec: " + args.workers)
+        process.exit(1)
+      }
+
+      const totalCount = specs.reduce((sum, s) => sum + s.count, 0)
+      const primaryRole = specs[0].role
+
+      let leaderSessionID: any = (args as any).session
       if (!leaderSessionID) {
         const sessions = [...Session.list({ roots: true, limit: 1 })]
         if (sessions.length > 0) {
@@ -177,20 +181,42 @@ export const TeamStartCommand = cmd({
       }
 
       const manifest = await Team.create({
-        taskDescription: args.task,
-        workerCount: args.count,
-        workerRole: args.role,
+        taskDescription: args.task as string,
+        workerCount: totalCount,
+        workerRole: primaryRole,
         leaderSessionID,
       })
 
       UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Team created: ${manifest.teamName}` + UI.Style.TEXT_NORMAL)
-      UI.println(`Workers:     ${manifest.workerCount}× ${manifest.workerRole}`)
+      UI.println(`Workers:     ${specs.map((s) => `${s.count}× ${s.role}`).join(", ")}`)
       UI.println(`Phase:      ${manifest.phase}`)
       UI.println(`Directory:  .opencode/team/${manifest.teamName}/`)
       UI.println("")
       UI.println("Next steps:")
-      UI.println(`  1. opencode team status ${manifest.teamName}  # check team`)
-      UI.println(`  2. opencode team shutdown ${manifest.teamName}  # stop team`)
+      UI.println(
+        `  1. opencode team spawn ${manifest.teamName} --count ${totalCount} --role ${primaryRole}  # start workers`,
+      )
+      UI.println(`  2. opencode team status ${manifest.teamName}  # check team`)
+      UI.println(`  3. opencode team shutdown ${manifest.teamName}  # stop team`)
     })
   },
 })
+
+function parseWorkerSpecs(input: string): Array<{ count: number; role: string }> {
+  return input
+    .split(",")
+    .map((seg) => seg.trim())
+    .filter(Boolean)
+    .map((seg) => {
+      const colonIdx = seg.indexOf(":")
+      if (colonIdx === -1) {
+        const count = parseInt(seg, 10)
+        return isNaN(count) ? null : { count, role: "executor" }
+      }
+      const countStr = seg.slice(0, colonIdx)
+      const role = seg.slice(colonIdx + 1).trim() || "executor"
+      const count = parseInt(countStr, 10)
+      return isNaN(count) ? null : { count, role }
+    })
+    .filter((s): s is { count: number; role: string } => s !== null)
+}
