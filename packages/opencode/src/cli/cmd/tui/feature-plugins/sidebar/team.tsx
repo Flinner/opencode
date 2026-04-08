@@ -21,34 +21,38 @@ function TeamPanel(props: { api: TuiPluginApi }) {
   const [open, setOpen] = createSignal(false)
   const theme = () => props.api.theme.current
   const sync = useSync()
-  const [tick, setTick] = createSignal(0)
+  const [refetchTick, setRefetchTick] = createSignal(0)
 
-  const [teamDetails] = createResource(tick, async (_t): Promise<TeamSummary[]> => {
-    const directory = sync.data.path.directory
-    if (!directory) return []
-    const names = await listTeams(directory)
-    const results = await Promise.all(
-      names.map(async (name): Promise<TeamSummary | null> => {
-        try {
-          const state = await readTeamState(directory, name)
-          if (!state) return null
-          const tasks = await readTasks(directory, name)
-          return {
-            name,
-            phase: state.phase,
-            active: state.active,
-            workerCount: state.workerCount,
-            taskCount: tasks.length,
-            pendingCount: tasks.filter((t) => t.status === "pending").length,
-            doneCount: tasks.filter((t) => t.status === "completed" || t.status === "failed").length,
+  const directory = createMemo(() => sync.data.path.directory)
+
+  const [teamDetails] = createResource(
+    () => ({ dir: directory(), tick: refetchTick() }),
+    async ({ dir }): Promise<TeamSummary[]> => {
+      if (!dir) return []
+      const names = await listTeams(dir)
+      const results = await Promise.all(
+        names.map(async (name): Promise<TeamSummary | null> => {
+          try {
+            const state = await readTeamState(dir, name)
+            if (!state) return null
+            const tasks = await readTasks(dir, name)
+            return {
+              name,
+              phase: state.phase,
+              active: state.active,
+              workerCount: state.workerCount,
+              taskCount: tasks.length,
+              pendingCount: tasks.filter((t) => t.status === "pending").length,
+              doneCount: tasks.filter((t) => t.status === "completed" || t.status === "failed").length,
+            }
+          } catch {
+            return null
           }
-        } catch {
-          return null
-        }
-      }),
-    )
-    return results.filter((t): t is TeamSummary => t !== null)
-  })
+        }),
+      )
+      return results.filter((t): t is TeamSummary => t !== null)
+    },
+  )
 
   const phaseColor = (phase: string, th: ReturnType<typeof theme>) => {
     if (phase === "complete") return th.success
@@ -60,7 +64,7 @@ function TeamPanel(props: { api: TuiPluginApi }) {
 
   const hasActive = createMemo<boolean>(() => (teamDetails() ?? []).some((t) => t.active))
 
-  const interval = setInterval(() => setTick((t) => t + 1), 5000)
+  const interval = setInterval(() => setRefetchTick((t) => t + 1), 5000)
   onCleanup(() => clearInterval(interval))
 
   return (
