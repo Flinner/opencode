@@ -59,6 +59,7 @@ import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { TuiConfigProvider, useTuiConfig } from "./context/tui-config"
 import { TuiConfig } from "@/config/tui"
+import { TabEvents } from "@/util/tab-events"
 import { createTuiApi, TuiPluginRuntime, type RouteMap } from "./plugin"
 import { FormatError, FormatUnknownError } from "@/cli/error"
 
@@ -911,7 +912,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
   })
 
-  const { TabEvents } = require("@/util/tab-events")
   TabEvents.on("tabOpen", (sessionID: string) => {
     openTab(sessionID)
   })
