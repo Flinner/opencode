@@ -48,12 +48,6 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
         const skillContent = workerSkill?.content ?? ""
 
         const workerRole = "general"
-        const leaderModel = ctx.extra?.model as { modelID?: string; providerID?: string } | undefined
-        const resolvedModel = params.model
-          ? { modelID: params.model as any, providerID: "opencode" as any }
-          : leaderModel?.modelID
-            ? { modelID: leaderModel.modelID as any, providerID: (leaderModel.providerID ?? "opencode") as any }
-            : { modelID: "claude-sonnet-4-20250514" as any, providerID: "opencode" as any }
 
         const phase = teamState.phase
         const instructions = Team.getPhaseInstructions(phase as any)
@@ -100,7 +94,6 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             await SessionPrompt.prompt({
               messageID,
               sessionID: session.id,
-              model: resolvedModel,
               agent: workerRole,
               tools: {
                 team_mailbox_list: true,
