@@ -436,7 +436,14 @@ NOTE: At any point in time through this workflow you should feel free to ask the
           providerID: input.model.providerID,
           agent: input.agent,
         })) {
-          const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
+          const rawSchema = (() => {
+            try {
+              return z.toJSONSchema(item.parameters)
+            } catch {
+              return { type: "object" } as any
+            }
+          })()
+          const schema = ProviderTransform.schema(input.model, rawSchema)
           tools[item.id] = tool({
             id: item.id as any,
             description: item.description,
