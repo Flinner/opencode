@@ -7,6 +7,7 @@ import { MessageID } from "@/session/schema"
 import { Team } from "../service"
 import { Skill } from "@/skill"
 import { randomUUID } from "crypto"
+import { TabEvents } from "@/util/tab-events"
 
 const parameters = z.object({
   team_name: z.string().describe("The team name"),
@@ -92,6 +93,8 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             role: workerRole,
             sessionID: session.id,
           })
+
+          TabEvents.emit("tabOpen", session.id)
 
           try {
             await SessionPrompt.prompt({

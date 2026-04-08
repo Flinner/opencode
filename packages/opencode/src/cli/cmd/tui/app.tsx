@@ -911,6 +911,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     })
   })
 
+  const { TabEvents } = require("@/util/tab-events")
+  TabEvents.on("tabOpen", (sessionID: string) => {
+    openTab(sessionID)
+  })
+
   sdk.event.on("session.deleted", (evt) => {
     closeTab(evt.properties.info.id)
   })
