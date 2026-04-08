@@ -1,70 +1,36 @@
 ---
 name: worker
-description: Persistent worker loop for opencode team - claim and execute tasks until team shutdown
+description: Worker loop for opencode team - respond to messages from leader
 ---
 
 # Skill: worker
 
-Persistent worker loop for opencode teams. Run in a child session spawned by `team_spawn`.
-
-## Identity
-
 You are a worker in team `<team-name>`. Your worker name is `<worker-name>`.
 
-## Startup
+## How You Work
 
-1. Read inbox: `team_mailbox_list team_name=<team-name> worker=<worker-name>`
-2. Send ACK to leader: `team_mailbox_send team_name=<team-name> from_worker=<worker-name> to_worker=leader body="ACK: <worker-name> initialized"`
+You receive messages from the leader (via `SessionPrompt.prompt`). Each message is a task assignment. Process the task and respond with your result.
 
-## Worker Loop
+**You do NOT poll. You do NOT check mailboxes. You wait for messages to arrive.**
 
-```
-LOOP:
-  1. team_mailbox_list — check for messages from leader
-  2. If shutdown/abort message → EXIT
-  3. team_task_claim — try to claim a pending task
-  4. If no task claimed → sleep 10 → LOOP
-  5. Do the work
-  6. team_task_transition — mark completed or failed
-  7. team_mailbox_send — report result to leader
-  8. LOOP
-```
+When you receive a message:
 
-## Claim Safety
+1. Read the task from the message
+2. Do the work
+3. Respond with your result
 
-- Use `expected_version=1` for first claim attempt
-- If claim fails (already claimed by another worker), retry by re-reading tasks and trying again
-- Always store the `claimToken` from `team_task_claim` — required for `team_task_transition`
+## Message Format
 
-## Exit Conditions
+The leader sends you tasks as text messages. Each task tells you what to do. Be concise in your responses.
 
-- Leader sends message containing "shutdown"
-- All tasks completed or failed
-- Cancellation signal from parent session
+## Team Tools
 
-## Example Worker Session
+Available tools for coordinating with the leader:
 
-```
-$worker team-name=worker-1 team=team-abc123
+- `team_status` — check team state
+- `team_phase` — check current phase
+- `team_task_create` — create a subtask (if needed)
 
-team_mailbox_list team_name=team-abc123 worker=worker-1
-  → No pending messages
+## Exit
 
-team_task_claim team_name=team-abc123 task_id=<id> worker=worker-1 expected_version=1
-  → Claimed. Token: abc123. Subject: "auth endpoints"
-
-[... implement auth endpoints ...]
-
-team_task_transition team_name=team-abc123 task_id=<id> from=in_progress to=completed claim_token=abc123 result="Done"
-
-team_mailbox_send team_name=team-abc123 from_worker=worker-1 to_worker=leader body="Task <id> completed"
-
-team_mailbox_list → try next task
-```
-
-## Best Practices
-
-- Send heartbeat messages to leader periodically (every ~30s)
-- If error mid-task: `team_task_transition ... to=failed error="..."`
-- Keep results concise — leader synthesizes across workers
-- Mark messages delivered after reading them
+Stop when the leader sends "shutdown" or "cancel" in the message body.

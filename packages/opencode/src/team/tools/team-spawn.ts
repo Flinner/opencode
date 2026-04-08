@@ -3,7 +3,6 @@ import { Effect } from "effect"
 import { Tool } from "@/tool/tool"
 import { Session } from "@/session"
 import { SessionPrompt } from "@/session/prompt"
-import { Agent } from "@/agent/agent"
 import { MessageID } from "@/session/schema"
 import { Team } from "../service"
 import { Skill } from "@/skill"
@@ -67,7 +66,6 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
               sessionID: session.id,
             })
 
-            const agent = await Agent.get(workerRole)
             const model = params.model ? { modelID: params.model as any, providerID: "opencode" as any } : undefined
 
             const messageID = MessageID.ascending()
@@ -93,7 +91,7 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
               messageID,
               sessionID: session.id,
               model: model ?? { modelID: "unknown", providerID: "opencode" },
-              agent: agent?.name ?? workerRole,
+              agent: "general",
               tools: {
                 team_mailbox_list: true,
                 team_mailbox_send: true,
