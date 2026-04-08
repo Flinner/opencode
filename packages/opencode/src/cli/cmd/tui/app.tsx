@@ -323,6 +323,13 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
     const prev = (activeTabIndex() - 1 + tabs.length) % tabs.length
     selectTab(tabs[prev])
   }
+
+  // Auto-track current session in tabs
+  createEffect(() => {
+    if (route.data.type === "session") {
+      openTab(route.data.sessionID)
+    }
+  })
   const routeView = (name: string) => {
     routeRev()
     return routes.get(name)?.at(-1)?.render
