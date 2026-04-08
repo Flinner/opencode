@@ -164,6 +164,12 @@ export namespace Skill {
       yield* scan(state, bus, dir, OPENCODE_SKILL_PATTERN)
     }
 
+    const pkgRoot = path.dirname(path.dirname(pathToFileURL(import.meta.url).pathname))
+    const pkgSkills = path.join(pkgRoot, "skills")
+    if (yield* fsys.isDir(pkgSkills)) {
+      yield* scan(state, bus, pkgSkills, OPENCODE_SKILL_PATTERN)
+    }
+
     const cfg = yield* config.get()
     for (const item of cfg.skills?.paths ?? []) {
       const expanded = item.startsWith("~/") ? path.join(os.homedir(), item.slice(2)) : item

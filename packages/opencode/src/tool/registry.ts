@@ -24,6 +24,19 @@ import { Log } from "@/util/log"
 import { LspTool } from "./lsp"
 import { Truncate } from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
+import {
+  TeamCreateTool,
+  TaskCreateTool,
+  TaskClaimTool,
+  TaskTransitionTool,
+  MailboxSendTool,
+  MailboxListTool,
+  TeamPhaseTool,
+  WorkerRegisterTool,
+  TeamStatusTool,
+  TeamSpawnTool,
+  TeamShutdownTool,
+} from "../team/tools"
 import { Glob } from "../util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -156,6 +169,17 @@ export namespace ToolRegistry {
                 ...(question ? [QuestionTool] : []),
                 ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
                 ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),
+                TeamCreateTool,
+                TaskCreateTool,
+                TaskClaimTool,
+                TaskTransitionTool,
+                MailboxSendTool,
+                MailboxListTool,
+                TeamPhaseTool,
+                WorkerRegisterTool,
+                TeamStatusTool,
+                TeamSpawnTool,
+                TeamShutdownTool,
               ],
               build,
               { concurrency: "unbounded" },
