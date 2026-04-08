@@ -1,7 +1,9 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createResource, createMemo, For, Show, Switch, Match, createSignal, onCleanup } from "solid-js"
-import { Team } from "@/team/service"
+import { useSync } from "@tui/context/sync"
 import { isTerminalPhase } from "@/team/types"
+import { listTeams, readTeamState } from "@/team/state/io"
+import { readTasks } from "@/team/state/tasks"
 
 const id = "internal:sidebar-team"
 
@@ -18,16 +20,19 @@ interface TeamSummary {
 function TeamPanel(props: { api: TuiPluginApi }) {
   const [open, setOpen] = createSignal(false)
   const theme = () => props.api.theme.current
+  const sync = useSync()
   const [tick, setTick] = createSignal(0)
 
-  const [teamDetails] = createResource(tick, async (): Promise<TeamSummary[]> => {
-    const names = await Team.listTeams()
+  const [teamDetails] = createResource(tick, async (_t): Promise<TeamSummary[]> => {
+    const directory = sync.data.path.directory
+    if (!directory) return []
+    const names = await listTeams(directory)
     const results = await Promise.all(
       names.map(async (name): Promise<TeamSummary | null> => {
         try {
-          const state = await Team.getState(name)
+          const state = await readTeamState(directory, name)
           if (!state) return null
-          const tasks = await Team.getTasks(name)
+          const tasks = await readTasks(directory, name)
           return {
             name,
             phase: state.phase,
