@@ -66,7 +66,9 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
               sessionID: session.id,
             })
 
-            const model = params.model ? { modelID: params.model as any, providerID: "opencode" as any } : undefined
+            const model = params.model
+              ? { modelID: params.model as any, providerID: "opencode" as any }
+              : (ctx.extra?.model as { modelID: string; providerID: string } | undefined)
 
             const messageID = MessageID.ascending()
 
@@ -90,7 +92,7 @@ export const TeamSpawnTool = Tool.defineEffect<typeof parameters, MyMetadata, ne
             SessionPrompt.prompt({
               messageID,
               sessionID: session.id,
-              model: model ?? { modelID: "unknown", providerID: "opencode" },
+              model: model ?? { modelID: "claude-sonnet-4-20250514", providerID: "opencode" },
               agent: "general",
               tools: {
                 team_mailbox_list: true,
